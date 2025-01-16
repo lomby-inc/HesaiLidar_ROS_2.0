@@ -236,7 +236,7 @@ inline sensor_msgs::msg::PointCloud2 SourceDriver::ToRosMsg(const LidarDecodedFr
 {
   sensor_msgs::msg::PointCloud2 ros_msg;
 
-  int fields = 6;
+  int fields = 10;
   ros_msg.fields.clear();
   ros_msg.fields.reserve(fields);
   ros_msg.width = frame.points_num; 
@@ -246,9 +246,13 @@ inline sensor_msgs::msg::PointCloud2 SourceDriver::ToRosMsg(const LidarDecodedFr
   offset = addPointField(ros_msg, "x", 1, sensor_msgs::msg::PointField::FLOAT32, offset);
   offset = addPointField(ros_msg, "y", 1, sensor_msgs::msg::PointField::FLOAT32, offset);
   offset = addPointField(ros_msg, "z", 1, sensor_msgs::msg::PointField::FLOAT32, offset);
-  offset = addPointField(ros_msg, "intensity", 1, sensor_msgs::msg::PointField::FLOAT32, offset);
-  offset = addPointField(ros_msg, "ring", 1, sensor_msgs::msg::PointField::UINT16, offset);
-  offset = addPointField(ros_msg, "timestamp", 1, sensor_msgs::msg::PointField::FLOAT64, offset);
+  offset = addPointField(ros_msg, "intensity", 1, sensor_msgs::msg::PointField::UINT8, offset);
+  offset = addPointField(ros_msg, "return_type", 1, sensor_msgs::msg::PointField::UINT8, offset);
+  offset = addPointField(ros_msg, "channel", 1, sensor_msgs::msg::PointField::UINT16, offset);
+  offset = addPointField(ros_msg, "azimuth", 1, sensor_msgs::msg::PointField::FLOAT32, offset);
+  offset = addPointField(ros_msg, "elevation", 1, sensor_msgs::msg::PointField::FLOAT32, offset);
+  offset = addPointField(ros_msg, "distance", 1, sensor_msgs::msg::PointField::FLOAT32, offset);
+  offset = addPointField(ros_msg, "time", 1, sensor_msgs::msg::PointField::UINT32, offset);
 
   ros_msg.point_step = offset;
   ros_msg.row_step = ros_msg.width * ros_msg.point_step;
@@ -258,9 +262,14 @@ inline sensor_msgs::msg::PointCloud2 SourceDriver::ToRosMsg(const LidarDecodedFr
   sensor_msgs::PointCloud2Iterator<float> iter_x_(ros_msg, "x");
   sensor_msgs::PointCloud2Iterator<float> iter_y_(ros_msg, "y");
   sensor_msgs::PointCloud2Iterator<float> iter_z_(ros_msg, "z");
-  sensor_msgs::PointCloud2Iterator<float> iter_intensity_(ros_msg, "intensity");
-  sensor_msgs::PointCloud2Iterator<uint16_t> iter_ring_(ros_msg, "ring");
-  sensor_msgs::PointCloud2Iterator<double> iter_timestamp_(ros_msg, "timestamp");
+  sensor_msgs::PointCloud2Iterator<uint8_t> iter_intensity_(ros_msg, "intensity");
+  sensor_msgs::PointCloud2Iterator<uint8_t> iter_return_type_(ros_msg, "return_type");
+  sensor_msgs::PointCloud2Iterator<uint16_t> iter_channel_(ros_msg, "channel");
+  sensor_msgs::PointCloud2Iterator<float> iter_azimuth_(ros_msg, "azimuth");
+  sensor_msgs::PointCloud2Iterator<float> iter_elevation_(ros_msg, "elevation");
+  sensor_msgs::PointCloud2Iterator<float> iter_distance_(ros_msg, "distance");
+  sensor_msgs::PointCloud2Iterator<uint32_t> iter_time_(ros_msg, "time");
+
   rclcpp::Clock clock(RCL_ROS_TIME);
   rclcpp::Time current_time = clock.now();
   ros_msg.header.stamp = current_time;
@@ -269,20 +278,33 @@ inline sensor_msgs::msg::PointCloud2 SourceDriver::ToRosMsg(const LidarDecodedFr
 
   for (size_t i = 0; i < frame.points_num; i++)
   {
-    LidarPointXYZIRT point = frame.points[i];
-    frame.points[i].timestamp=timestamp_seconds;
-    *iter_x_ = point.x;
-    *iter_y_ = point.y;
-    *iter_z_ = point.z;
-    *iter_intensity_ = point.intensity;
-    *iter_ring_ = point.ring;
-    *iter_timestamp_ = point.timestamp;
-    ++iter_x_;
-    ++iter_y_;
-    ++iter_z_;
-    ++iter_intensity_;
-    ++iter_ring_;
-    ++iter_timestamp_;   
+      LidarPointXYZIRT point = frame.points[i];
+      frame.points[i].timestamp=timestamp_seconds;
+      *iter_x_ = point.x;
+      *iter_y_ = point.y;
+      *iter_z_ = point.z;
+      *iter_intensity_ = point.intensity;
+      *iter_return_type_ = 0;
+
+      // Calculate additional fields
+      float distance = sqrt(point.x * point.x + point.y * point.y + point.z * point.z);
+      float azimuth = atan2(point.y, point.x);
+      float elevation = atan2(point.z, distance);
+      uint8_t return_type = 0; // TODO(Lomby): Determine which is the return type being used. 0: Unknown, 1: Strongest, 2: Last.
+      uint16_t channel = 0; // TODO(Lomby): Find a way to compute the columen or get it from the SDK.
+
+      *iter_return_type_ = return_type;
+      *iter_channel_ = channel;
+      *iter_azimuth_ = azimuth;
+      *iter_elevation_ = elevation;
+      *iter_distance_ = distance;
+      
+      *iter_time_ = point.timestamp;
+
+      ++iter_x_; ++iter_y_; ++iter_z_;
+      ++iter_intensity_; ++iter_return_type_; ++iter_channel_;
+      ++iter_azimuth_; ++iter_elevation_; ++iter_distance_;
+       ++iter_time_;
   }
   // printf("HesaiLidar Runing Status [standby mode:%u]  |  [speed:%u]\n", frame.work_mode, frame.spin_speed);
   printf("frame:%d points:%u packet:%d start time:%lf end time:%lf\n",frame.frame_index, frame.points_num, frame.packet_num, frame.points[0].timestamp, frame.points[frame.points_num - 1].timestamp) ;
